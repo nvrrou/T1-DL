@@ -1,0 +1,17 @@
+# Datos crudos y procesados (varios GB, no van a GitHub)
+archive/
+archive.zip
+
+# Entornos virtuales de Python
+.venv/   
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs generados en las corridas
+*.log
+
+# Duplicados temporales
+PIPELINE-*.md

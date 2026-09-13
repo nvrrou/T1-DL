@@ -1,0 +1,21 @@
+{
+  "name": "AutoML (lgbm)",
+  "family": "AutoML / ML clasico",
+  "test_accuracy": 0.5720654427064018,
+  "test_macro_f1": 0.5255397033312453,
+  "train_accuracy": 0.5825776842585305,
+  "generalizacion_gap": 0.01051224155212871,
+  "complejidad_params": "167 arboles",
+  "tiempo_s": 1827.9002282619476,
+  "best_estimator": "lgbm",
+  "best_config": {
+    "n_estimators": 167,
+    "num_leaves": 38,
+    "min_child_samples": 128,
+    "learning_rate": 0.14027538745529927,
+    "log_max_bin": 10,
+    "colsample_bytree": 0.787615244959978,
+    "reg_alpha": 0.03702643447767752,
+    "reg_lambda": 0.45552460733686584
+  }
+}
