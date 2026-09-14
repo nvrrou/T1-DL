@@ -1,0 +1,16 @@
+{
+  "train_rows": 7897446,
+  "best_n_estimators": 566,
+  "val_macro_f1": 0.3747084654964083,
+  "test_accuracy": 0.5921942526175095,
+  "test_macro_f1": 0.5644199742313768,
+  "train_time_s": 193.74364110000897,
+  "inference_time_s": 1.41007479999098,
+  "best_config": {
+    "learning_rate": 0.06225267745049986,
+    "depth": 9,
+    "l2_leaf_reg": 10.82917257232035,
+    "random_strength": 1.5976349196702044,
+    "border_count": 64
+  }
+}

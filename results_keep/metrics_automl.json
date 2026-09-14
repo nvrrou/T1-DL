@@ -1,0 +1,53 @@
+{
+  "name": "AutoML (catboost_gpu)",
+  "family": "AutoML / CatBoost GPU",
+  "test_accuracy": 0.5918276433280756,
+  "test_macro_f1": 0.56198106631278,
+  "train_accuracy": 0.49744788670330614,
+  "train_macro_f1": 0.48876605718190813,
+  "val_accuracy": 0.4598944561674164,
+  "val_macro_f1": 0.38847542008666675,
+  "generalizacion_gap": -0.09437975662476944,
+  "complejidad_params": 289792,
+  "complejidad_unidad": "hojas de arbol",
+  "tiempo_s": 1771.0232644081116,
+  "search_time_s": 1771.0232644081116,
+  "fit_time_s": 0.0,
+  "inference_time_s": 0.6760550000035437,
+  "device": "gpu",
+  "gpu": "NVIDIA GeForce RTX 3060 Ti",
+  "sample_weight": true,
+  "best_loss": 0.6115245799133333,
+  "best_estimator": "catboost_gpu",
+  "best_config": {
+    "learning_rate": 0.06225267745049986,
+    "n_estimators": 566,
+    "depth": 9,
+    "l2_leaf_reg": 10.82917257232035,
+    "random_strength": 1.5976349196702044,
+    "border_count": 64
+  },
+  "run_id": "8cdc75e1-a40f-4407-8f85-f9013f81f1ba",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 2369213,
+  "val_rows": 269651,
+  "test_rows": 303046,
+  "majority_test_accuracy": 0.36350917022498236,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 18.0169038772583,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  }
+}

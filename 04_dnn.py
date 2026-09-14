@@ -53,14 +53,14 @@ def train():
     print(f"  Dispositivo: {cfg.DEVICE}")
     print("=" * 60)
 
-    os.makedirs(cfg.RESULTS_DIR, exist_ok=True)
-    for split, path in cfg.INPUT_FILES.items():
+    os.makedirs(cfg.SYNTHETIC_RESULTS_DIR, exist_ok=True)
+    for split, path in cfg.SYNTHETIC_INPUT_FILES.items():
         if not os.path.exists(path):
             print(f"  ERROR: falta {path}. Ejecuta antes 02_feature_engineering.py")
             return
 
-    num_cols, cat_cols, cat_cards = load_schema()
-    classes, class_to_idx, counts, total, weights = scan_classes_and_weights(cfg.INPUT_FILES["train"])
+    num_cols, cat_cols, cat_cards = load_schema(cfg.SYNTHETIC_ARTIFACT_DIR)
+    classes, class_to_idx, counts, total, weights = scan_classes_and_weights(cfg.SYNTHETIC_INPUT_FILES["train"])
     n_classes = len(classes)
     print(f"\n  Numericas: {len(num_cols)} | Categoricas: {len(cat_cols)} {list(zip(cat_cols, cat_cards))}")
     print(f"  Clases {classes} - distribucion:")
@@ -68,8 +68,8 @@ def train():
         print(f"    {c}: {counts[c]/total*100:.2f}% ({counts[c]:,})  peso={weights[class_to_idx[c]]:.3f}")
 
     with timer("Cargando val y test en memoria"):
-        Xn_val, Xc_val, y_val = load_full(cfg.INPUT_FILES["val"], num_cols, cat_cols, class_to_idx)
-        Xn_test, Xc_test, y_test = load_full(cfg.INPUT_FILES["test"], num_cols, cat_cols, class_to_idx)
+        Xn_val, Xc_val, y_val = load_full(cfg.SYNTHETIC_INPUT_FILES["val"], num_cols, cat_cols, class_to_idx)
+        Xn_test, Xc_test, y_test = load_full(cfg.SYNTHETIC_INPUT_FILES["test"], num_cols, cat_cols, class_to_idx)
         print(f"    val: {tuple(Xn_val.shape)}  test: {tuple(Xn_test.shape)}")
 
     model = TabularDNN(len(num_cols), cat_cards, cfg.HIDDEN_LAYERS, n_classes, cfg.DROPOUT).to(cfg.DEVICE)
@@ -88,7 +88,7 @@ def train():
     with timer("Entrenamiento (streaming por mini-batches)"):
         for epoch in range(1, cfg.EPOCHS + 1):
             model.train()
-            stream = ParquetStream(cfg.INPUT_FILES["train"], num_cols, cat_cols, class_to_idx,
+            stream = ParquetStream(cfg.SYNTHETIC_INPUT_FILES["train"], num_cols, cat_cols, class_to_idx,
                                    shuffle=True, max_batches=cfg.MAX_BATCHES_PER_EPOCH)
             run_loss, run_correct, run_n, nb = 0.0, 0, 0, 0
             run_loss_weight = 0.0
@@ -131,7 +131,7 @@ def train():
                     break
 
     fit_seconds = time.perf_counter() - fit_start
-    pd.DataFrame(history).rename_axis("epoch_index").to_csv(os.path.join(cfg.RESULTS_DIR, "dnn_history.csv"))
+    pd.DataFrame(history).rename_axis("epoch_index").to_csv(os.path.join(cfg.SYNTHETIC_RESULTS_DIR, "dnn_history.csv"))
     if best_state is not None:
         model.load_state_dict(best_state)
 
@@ -148,7 +148,7 @@ def train():
               labels=list(range(n_classes)), target_names=price_direction_display_labels(classes), zero_division=0))
         plot_confusion(y_true, y_pred, classes)
 
-    ckpt_path = os.path.join(cfg.ARTIFACT_DIR, "dnn_model.pt")
+    ckpt_path = os.path.join(cfg.SYNTHETIC_ARTIFACT_DIR, "dnn_model.pt")
     torch.save({
         "state_dict": model.state_dict(),
         "num_cols": num_cols, "cat_cols": cat_cols, "cat_cardinalities": cat_cards,
@@ -158,7 +158,7 @@ def train():
     correct, evaluated = 0, 0
     model.eval()
     with torch.no_grad():
-        for xn, xc, yb in ParquetStream(cfg.INPUT_FILES["train"], num_cols, cat_cols, class_to_idx, shuffle=False):
+        for xn, xc, yb in ParquetStream(cfg.SYNTHETIC_INPUT_FILES["train"], num_cols, cat_cols, class_to_idx, shuffle=False):
             predicted = model(xn.to(cfg.DEVICE), xc.to(cfg.DEVICE)).argmax(1).cpu()
             correct += int((predicted == yb).sum())
             evaluated += len(yb)
@@ -173,13 +173,13 @@ def train():
         "inference_time_s": inference_seconds, "epochs": len(history["train_loss"]),
         "device": torch.cuda.get_device_name() if cfg.DEVICE.type == "cuda" else "cpu",
         "hidden": cfg.HIDDEN_LAYERS, "dropout": cfg.DROPOUT,
-    }, y_true, y_pred, ckpt_path, cfg.ARTIFACT_DIR, cfg.RESULTS_DIR)
+    }, y_true, y_pred, ckpt_path, cfg.SYNTHETIC_ARTIFACT_DIR, cfg.SYNTHETIC_RESULTS_DIR)
 
     print(f"\n{'='*60}\n  RESUMEN DNN\n{'='*60}")
     print(f"  Test accuracy: {te_acc:.4f}")
     print(f"  Parametros: {n_params:,}")
-    print(f"  Curvas: {os.path.join(cfg.RESULTS_DIR, '08_dnn_convergencia.png')}")
-    print(f"  Comparar con results/baseline_results.csv (03_baselines.py)")
+    print(f"  Curvas: {os.path.join(cfg.SYNTHETIC_RESULTS_DIR, '08_dnn_convergencia.png')}")
+    print("  Comparar con result_sintetico/baseline_results.csv (03_baselines.py)")
     print(f"{'='*60}")
 
 if __name__ == "__main__":

@@ -1,0 +1,50 @@
+{
+  "name": "DNN manual mejorada",
+  "family": "DNN disenada a mano",
+  "train_accuracy": 0.41164233333333333,
+  "val_accuracy": 0.3184138712839014,
+  "val_macro_f1": 0.16777813762562033,
+  "test_accuracy": 0.5517487190911116,
+  "test_macro_f1": 0.5161109446824419,
+  "generalizacion_gap": -0.14010638575777823,
+  "complejidad_params": 57855,
+  "complejidad_unidad": "parametros entrenables",
+  "search_time_s": 0.0,
+  "fit_time_s": 41.458302000013646,
+  "tiempo_s": 41.458302000013646,
+  "inference_time_s": 0.2876319999922998,
+  "epochs": 6,
+  "best_epoch": 1,
+  "device": "NVIDIA GeForce RTX 3060 Ti",
+  "hidden": [
+    256,
+    128,
+    64
+  ],
+  "dropout": 0.3,
+  "use_class_weights": true,
+  "use_amp": true,
+  "run_id": "d9c89008-c256-450c-a403-5045a690221d",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 3000000,
+  "val_rows": 898893,
+  "test_rows": 1010025,
+  "majority_test_accuracy": 0.36248409692829386,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 0.23431110382080078,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  }
+}

@@ -31,10 +31,10 @@ plt.style.use("seaborn-v0_8-darkgrid")
 sns.set_palette("viridis")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "archive", "data")
+DATA_DIR = os.path.join(BASE_DIR, "archive", "data", "sintetico")
 CLEAN_DIR = os.path.join(DATA_DIR, "clean")
 ARTIFACT_DIR = os.path.join(CLEAN_DIR, "artifacts")
-RESULTS_DIR = os.path.join(BASE_DIR, "results")
+RESULTS_DIR = os.path.join(BASE_DIR, "result_sintetico")
 
 from target_config import CLASSIFICATION_TARGET
 REGRESSION_TARGETS = ["target_price_7d", "target_price_30d"]
@@ -90,13 +90,17 @@ def prepare_xy(data: dict):
     return X, y
 
 def save_figure(fig, name: str):
+    fig.text(
+        0.99, 0.01, "Datos sinteticos",
+        ha="right", va="bottom", fontsize=10, fontweight="bold", color="#555555",
+    )
     path = os.path.join(RESULTS_DIR, f"{name}.png")
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print(f"    Guardado: {path}")
 
 def format_confusion_axes(ax):
-    """Etiquetas compactas y legibles para matrices de cinco clases."""
+    """Etiquetas compactas y legibles para matrices multiclase."""
     ax.set_xlabel("Predicha", fontsize=10)
     ax.set_ylabel("Real", fontsize=10)
     ax.tick_params(axis="both", labelsize=9)
@@ -330,7 +334,7 @@ def plot_comparison(results: dict):
     ax.set_xlim(0, max(accs) * 1.15)
     ax.grid(axis="x", alpha=0.3)
 
-    ax.axvline(x=1/len(PRICE_DIRECTION_CLASSES), color="red", linestyle="--", alpha=0.5, label="Azar uniforme (1/5 = 20%)")
+    ax.axvline(x=1/len(PRICE_DIRECTION_CLASSES), color="red", linestyle="--", alpha=0.5, label="Azar uniforme (1/3 = 33.3%)")
     ax.legend(fontsize=10)
 
     fig.tight_layout()
@@ -425,7 +429,7 @@ def generate_summary(results: dict):
 def main():
     print("=" * 60)
     print("  MODELOS BASELINE - Clasificacion Multiclase")
-    print(f"  Target: {CLASSIFICATION_TARGET} (5 clases de cambio de precio a 7 dias)")
+    print(f"  Target: {CLASSIFICATION_TARGET} (Baja / Neutro / Sube a 7 dias)")
     print("=" * 60)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)

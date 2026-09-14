@@ -27,14 +27,17 @@ def module(filename):
 
 class PipelineTests(unittest.TestCase):
     def test_thresholds(self):
-        current = pd.Series([100.] * 11 + [0., 100.])
-        future = pd.Series([80., 90., 90.01, 96.99, 97., 100., 103., 103.01, 109.99, 110., 120., 10., np.nan])
+        current = pd.Series([100.] * 9 + [0., 100.])
+        future = pd.Series([80., 90., 96.99, 97., 100., 103., 103.01, 110., 120., 10., np.nan])
         result = price_direction_labels(current, future)
-        self.assertEqual(result.iloc[:11].tolist(), [PRICE_DIRECTION_CLASSES[i] for i in [0, 0, 1, 1, 2, 2, 2, 3, 3, 4, 4]])
-        self.assertTrue(result.iloc[11:].isna().all())
+        self.assertEqual(
+            result.iloc[:9].tolist(),
+            [PRICE_DIRECTION_CLASSES[i] for i in [0, 0, 0, 1, 1, 1, 2, 2, 2]],
+        )
+        self.assertTrue(result.iloc[9:].isna().all())
         self.assertEqual(
             price_direction_display_labels(PRICE_DIRECTION_CLASSES),
-            ["Baja++", "Baja", "Neutro", "Sube", "Sube++"],
+            ["Baja", "Neutro", "Sube"],
         )
 
     def test_end_to_end(self):
@@ -49,7 +52,7 @@ class PipelineTests(unittest.TestCase):
             results.mkdir()
             rows = []
             for day, date in enumerate(pd.date_range('2023-01-01', periods=120)):
-                for label, change in enumerate([-20, -5, 0, 5, 20]):
+                for label, change in enumerate([-5, 0, 5]):
                     rows.append({'product_id': f'p{label}', 'timestamp': date.isoformat(),
                                  'platform': 'amazon', 'price': 100., 'target_price_7d': 100. + change,
                                  'target_price_30d': 110., 'target_price_direction_7d': 0,
@@ -83,6 +86,9 @@ class PipelineTests(unittest.TestCase):
                 for split in files:
                     self.assertEqual(set(manifest['splits'][split]['classes']), set(PRICE_DIRECTION_CLASSES))
                 settings = dict(CLEAN_DIR=str(clean), ARTIFACT_DIR=str(artifacts), RESULTS_DIR=str(results),
+                                SYNTHETIC_RESULTS_DIR=str(results),
+                                SYNTHETIC_CLEAN_DIR=str(clean), SYNTHETIC_ARTIFACT_DIR=str(artifacts),
+                                SYNTHETIC_INPUT_FILES=features.OUTPUT_FILES,
                                 INPUT_FILES=features.OUTPUT_FILES, EPOCHS=1, BATCH_SIZE=64,
                                 HIDDEN_LAYERS=[8], DEVICE=torch.device('cpu'))
                 with patch.multiple(cfg, **settings):
@@ -97,6 +103,7 @@ class PipelineTests(unittest.TestCase):
                     automl.TIME_BUDGET, automl.MAX_ITER, automl.ESTIMATORS = 3, 1, ['lrl2']
                     automl.main()
                     nas = module('06_nas.py')
+                    nas.REQUIRE_CUDA = False
                     nas.N_TRIALS = nas.NAS_EPOCHS_PER_TRIAL = nas.NAS_FINAL_EPOCHS = 1
                     nas.main()
                     comparison = module('07_comparacion.py')

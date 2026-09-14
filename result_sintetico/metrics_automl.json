@@ -1,0 +1,51 @@
+{
+  "name": "AutoML (catboost_gpu)",
+  "family": "AutoML / ML clasico",
+  "test_accuracy": 0.592021979653969,
+  "test_macro_f1": 0.5640293278567514,
+  "train_accuracy": 0.49928866666666666,
+  "generalizacion_gap": -0.09273331298730231,
+  "complejidad_params": 86784,
+  "complejidad_unidad": "hojas de arbol",
+  "tiempo_s": 723.4095592498779,
+  "search_time_s": 723.4095592498779,
+  "fit_time_s": 0.0,
+  "inference_time_s": 1.832748899993021,
+  "device": "GPU:0 (CatBoost)",
+  "tree_count": 1356,
+  "leaf_values": 260352,
+  "val_accuracy": 0.455686049396313,
+  "val_macro_f1": 0.385388008563236,
+  "best_estimator": "catboost_gpu",
+  "best_config": {
+    "learning_rate": 0.09144712081767364,
+    "n_estimators": 1356,
+    "depth": 6,
+    "l2_leaf_reg": 3.816033993689562,
+    "random_strength": 0.05583129860235676,
+    "border_count": 64
+  },
+  "run_id": "d9c89008-c256-450c-a403-5045a690221d",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 3000000,
+  "val_rows": 898893,
+  "test_rows": 1010025,
+  "majority_test_accuracy": 0.36248409692829386,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 25.706857681274414,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "DNN manual",
+  "family": "DNN disenada a mano",
+  "train_accuracy": 0.41131675370682164,
+  "val_accuracy": 0.4470111366173313,
+  "val_macro_f1": 0.40741517431364543,
+  "complejidad_params": 57855,
+  "search_time_s": 0.0,
+  "complejidad_unidad": "parametros entrenables",
+  "fit_time_s": 130.51037410000572,
+  "tiempo_s": 130.51037410000572,
+  "inference_time_s": 0.1002946999942651,
+  "epochs": 30,
+  "device": "NVIDIA GeForce RTX 3060 Ti",
+  "hidden": [
+    256,
+    128,
+    64
+  ],
+  "dropout": 0.3,
+  "run_id": "8cdc75e1-a40f-4407-8f85-f9013f81f1ba",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 2369213,
+  "val_rows": 269651,
+  "test_rows": 303046,
+  "test_accuracy": 0.4674669852101661,
+  "test_macro_f1": 0.43641600335044944,
+  "majority_test_accuracy": 0.36350917022498236,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 0.23396682739257812,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  },
+  "generalizacion_gap": -0.05615023150334447
+}

@@ -1,0 +1,40 @@
+{
+  "name": "Baseline (Reg. Logistica)",
+  "family": "ML clasico lineal",
+  "train_accuracy": 0.4576895365676282,
+  "val_accuracy": 0.456920241349003,
+  "val_macro_f1": 0.33343580048163507,
+  "complejidad_params": 117,
+  "complejidad_unidad": "parametros entrenables",
+  "search_time_s": 0.0,
+  "fit_time_s": 72.47854670000379,
+  "tiempo_s": 72.47854670000379,
+  "inference_time_s": 0.021185999998124316,
+  "device": "cpu",
+  "run_id": "8cdc75e1-a40f-4407-8f85-f9013f81f1ba",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 2369213,
+  "val_rows": 269651,
+  "test_rows": 303046,
+  "test_accuracy": 0.5258508609254041,
+  "test_macro_f1": 0.38803366350416385,
+  "majority_test_accuracy": 0.36350917022498236,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 0.0014066696166992188,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  },
+  "generalizacion_gap": -0.06816132435777594
+}

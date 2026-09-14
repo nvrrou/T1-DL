@@ -36,10 +36,13 @@ N_TRIALS = 25
 NAS_EPOCHS_PER_TRIAL = 4
 NAS_FINAL_EPOCHS = 15
 SEED = cfg.SEED
+REQUIRE_CUDA = True
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 torch.manual_seed(SEED)
 np.random.seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 
 def load_sample(path, num_cols, cat_cols, class_to_idx, n):
     df = sample_parquet(path, num_cols + cat_cols + [cfg.CLASSIFICATION_TARGET], n, seed=SEED)
@@ -92,20 +95,27 @@ def train_model(hidden, dropout, lr, wd, bs, epochs, data, weights,
     return model, best_f1
 
 def main():
+    if REQUIRE_CUDA and cfg.DEVICE.type != "cuda":
+        raise RuntimeError(
+            "06_nas.py requiere CUDA. Verifica el driver NVIDIA y la instalacion CUDA de PyTorch."
+        )
+    if cfg.DEVICE.type == "cuda":
+        torch.backends.cudnn.benchmark = True
     print("=" * 60)
     print("  PASO 3 (2.2): NAS con Optuna")
-    print(f"  Dispositivo: {cfg.DEVICE}")
+    device_name = torch.cuda.get_device_name(0) if cfg.DEVICE.type == "cuda" else "CPU"
+    print(f"  Dispositivo: {cfg.DEVICE} ({device_name})")
     print("=" * 60)
-    os.makedirs(cfg.RESULTS_DIR, exist_ok=True)
+    os.makedirs(cfg.SYNTHETIC_RESULTS_DIR, exist_ok=True)
 
-    num_cols, cat_cols, cat_cards = load_schema()
-    classes, class_to_idx, counts, total, w = scan_classes_and_weights(cfg.INPUT_FILES["train"])
+    num_cols, cat_cols, cat_cards = load_schema(cfg.SYNTHETIC_ARTIFACT_DIR)
+    classes, class_to_idx, counts, total, w = scan_classes_and_weights(cfg.SYNTHETIC_INPUT_FILES["train"])
     n_classes, n_num = len(classes), len(num_cols)
     weights = torch.from_numpy(w).to(cfg.DEVICE)
 
     print("\n  Cargando el train comun y validacion temporal...")
-    Xn_tr, Xc_tr, y_tr = load_sample(cfg.INPUT_FILES["train"], num_cols, cat_cols, class_to_idx, NAS_TRAIN_SAMPLE)
-    Xn_va, Xc_va, y_va = load_full(cfg.INPUT_FILES["val"], num_cols, cat_cols, class_to_idx)
+    Xn_tr, Xc_tr, y_tr = load_sample(cfg.SYNTHETIC_INPUT_FILES["train"], num_cols, cat_cols, class_to_idx, NAS_TRAIN_SAMPLE)
+    Xn_va, Xc_va, y_va = load_full(cfg.SYNTHETIC_INPUT_FILES["val"], num_cols, cat_cols, class_to_idx)
     data = (Xn_tr, Xc_tr, y_tr, Xn_va, Xc_va, y_va)
     print(f"    train muestra: {tuple(Xn_tr.shape)}  val: {tuple(Xn_va.shape)}")
 
@@ -116,8 +126,13 @@ def main():
         lr = trial.suggest_float("lr", 1e-4, 5e-3, log=True)
         wd = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
         bs = trial.suggest_categorical("batch_size", [1024, 2048, 4096])
-        _, val_f1 = train_model(hidden, dropout, lr, wd, bs, NAS_EPOCHS_PER_TRIAL,
-                                data, weights, cat_cards, n_num, n_classes, trial)
+        trial_model, val_f1 = train_model(
+            hidden, dropout, lr, wd, bs, NAS_EPOCHS_PER_TRIAL,
+            data, weights, cat_cards, n_num, n_classes, trial,
+        )
+        del trial_model
+        if cfg.DEVICE.type == "cuda":
+            torch.cuda.empty_cache()
         return val_f1
 
     print(f"\n  Buscando {N_TRIALS} arquitecturas ({NAS_EPOCHS_PER_TRIAL} epocas c/u)...")
@@ -128,7 +143,7 @@ def main():
     study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=False)
     search_time = time.time() - t0
 
-    study.trials_dataframe().to_csv(os.path.join(cfg.RESULTS_DIR, "nas_trials.csv"), index=False)
+    study.trials_dataframe().to_csv(os.path.join(cfg.SYNTHETIC_RESULTS_DIR, "nas_trials.csv"), index=False)
     best = study.best_params
     n_layers = best["n_layers"]
     best_hidden = [best[f"units_l{i}"] for i in range(n_layers)]
@@ -143,8 +158,8 @@ def main():
                            cat_cards, n_num, n_classes, trial=None)
 
     final_seconds = time.perf_counter() - final_start
-    pd.DataFrame(model.training_history).to_csv(os.path.join(cfg.RESULTS_DIR, "nas_final_history.csv"), index=False)
-    Xn_te, Xc_te, y_te = load_full(cfg.INPUT_FILES["test"], num_cols, cat_cols, class_to_idx)
+    pd.DataFrame(model.training_history).to_csv(os.path.join(cfg.SYNTHETIC_RESULTS_DIR, "nas_final_history.csv"), index=False)
+    Xn_te, Xc_te, y_te = load_full(cfg.SYNTHETIC_INPUT_FILES["test"], num_cols, cat_cols, class_to_idx)
     y_true = y_te.numpy()
     inference_start = time.perf_counter()
     y_pred = predict(model, Xn_te, Xc_te)
@@ -166,7 +181,7 @@ def main():
     torch.save({"state_dict": model.state_dict(), "hidden": best_hidden,
                 "dropout": best["dropout"], "num_cols": num_cols, "cat_cols": cat_cols,
                 "cat_cardinalities": cat_cards, "classes": classes},
-               os.path.join(cfg.ARTIFACT_DIR, "nas_model.pt"))
+               os.path.join(cfg.SYNTHETIC_ARTIFACT_DIR, "nas_model.pt"))
     metrics = {
         "name": "NAS (Optuna)",
         "family": "DNN con arquitectura optimizada",
@@ -186,11 +201,11 @@ def main():
                       "batch_size": best["batch_size"]},
     }
     save_metrics("nas", metrics, y_true, y_pred,
-                 os.path.join(cfg.ARTIFACT_DIR, "nas_model.pt"), cfg.ARTIFACT_DIR, cfg.RESULTS_DIR)
+                 os.path.join(cfg.SYNTHETIC_ARTIFACT_DIR, "nas_model.pt"), cfg.SYNTHETIC_ARTIFACT_DIR, cfg.SYNTHETIC_RESULTS_DIR)
 
     print(f"\n{'='*60}")
     print(f"  NAS listo | arq {best_hidden} | test acc {test_acc:.4f} | {search_time:.0f}s")
-    print(f"  Guardado: results/metrics_nas.json")
+    print("  Guardado: result_sintetico/metrics_nas.json")
     print(f"{'='*60}")
 
 def plot_history(study):
@@ -200,10 +215,10 @@ def plot_history(study):
     ax.plot(range(1, len(vals) + 1), vals, "o", alpha=0.5, label="Trial (val macro-F1)")
     ax.plot(range(1, len(vals) + 1), best_so_far, "-", color="#FF5722", linewidth=2, label="Mejor hasta ahora")
     ax.set_xlabel("Trial"); ax.set_ylabel("Val macro-F1")
-    ax.set_title("NAS - Historia de la busqueda (Optuna)", fontweight="bold")
+    ax.set_title("NAS - Historia de la busqueda (Optuna) - Datos sinteticos", fontweight="bold")
     ax.legend(); ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(cfg.RESULTS_DIR, "12_nas_historia.png"), dpi=150, bbox_inches="tight", facecolor="white")
+    fig.savefig(os.path.join(cfg.SYNTHETIC_RESULTS_DIR, "12_nas_historia.png"), dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
 def plot_confusion(y_true, y_pred, classes, acc):
@@ -216,9 +231,9 @@ def plot_confusion(y_true, y_pred, classes, acc):
     ax.set_ylabel("Real", fontsize=10)
     ax.tick_params(axis="both", labelsize=9)
     plt.setp(ax.get_xticklabels(), rotation=25, ha="right", rotation_mode="anchor")
-    ax.set_title(f"NAS - Test (Acc={acc:.4f})", fontweight="bold")
+    ax.set_title(f"NAS - Datos sinteticos - Test (Acc={acc:.4f})", fontweight="bold")
     fig.tight_layout()
-    fig.savefig(os.path.join(cfg.RESULTS_DIR, "13_nas_confusion.png"), dpi=150, bbox_inches="tight", facecolor="white")
+    fig.savefig(os.path.join(cfg.SYNTHETIC_RESULTS_DIR, "13_nas_confusion.png"), dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
 if __name__ == "__main__":

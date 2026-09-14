@@ -3,6 +3,8 @@ import gc
 import sys
 import time
 import pickle
+import json
+import shutil
 from collections import Counter
 
 import numpy as np
@@ -13,14 +15,16 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from experiment_results import write_dataset_manifest
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "archive", "data")
+DATA_DIR = os.path.join(BASE_DIR, "archive", "data", "sintetico")
 CLEAN_DIR = os.path.join(DATA_DIR, "clean")
 ARTIFACT_DIR = os.path.join(CLEAN_DIR, "artifacts")
+REAL_CLEAN_DIR = os.path.join(BASE_DIR, "archive", "data", "clean")
+REAL_ARTIFACT_DIR = os.path.join(REAL_CLEAN_DIR, "artifacts")
 
 INPUT_FILES = {
     "train": os.path.join(CLEAN_DIR, "train.parquet"),
-    "val":   os.path.join(CLEAN_DIR, "val.parquet"),
-    "test":  os.path.join(CLEAN_DIR, "test.parquet"),
+    "val":   os.path.join(REAL_CLEAN_DIR, "val_features.parquet"),
+    "test":  os.path.join(REAL_CLEAN_DIR, "test_features.parquet"),
 }
 
 OUTPUT_FILES = {
@@ -31,7 +35,7 @@ OUTPUT_FILES = {
 
 CAT_COLS = ["category", "subcategory", "platform", "stock_status"]
 
-from target_config import CLASSIFICATION_TARGET, price_direction_labels
+from target_config import CLASSIFICATION_TARGET, NEUTRAL_CHANGE_PCT, price_direction_labels
 REGRESSION_TARGETS = ["target_price_7d", "target_price_30d"]
 
 CHUNK_SIZE = 250_000
@@ -196,7 +200,7 @@ def pass2_transform_write(split: str, in_path: str, out_path: str,
         num_cols
         + roles["cat_cols"]
         + roles["reg_targets"]
-        + ([CLASSIFICATION_TARGET] if CLASSIFICATION_TARGET in roles["all_cols"] else [])
+        + [CLASSIFICATION_TARGET]
     )
 
     writer = None
@@ -254,8 +258,8 @@ def save_artifacts(scaler, encoders, imputers, feature_names):
 
 def main():
     print("=" * 60)
-    print("  FASE 3: FEATURE ENGINEERING & PREPROCESAMIENTO")
-    print("  Arquitectura: Two-Pass Streaming (out-of-core)")
+    print("  FASE 3: FEATURE ENGINEERING & PREPROCESAMIENTO - DATOS SINTETICOS")
+    print("  Train sintetico; val/test reales; preprocesamiento original congelado")
     print("=" * 60)
 
     for split, path in INPUT_FILES.items():
@@ -276,28 +280,46 @@ def main():
     print(f"  Columnas categoricas:          {len(roles['cat_cols'])} {roles['cat_cols']}")
     print(f"  Targets:                       {roles['targets']}")
 
-    with timer("PASADA 1a: stats incrementales (imputacion + vocabulario)"):
-        imputers, encoders, n_train = pass1a_accumulate_stats(INPUT_FILES["train"], roles)
-        print(f"    Medias numericas calculadas: {len(imputers['numeric_means'])}")
-        for c in roles["cat_cols"]:
-            print(f"    '{c}': {len(encoders[c].classes_)} categorias (incl. {UNKNOWN_TOKEN})")
-
-    with timer("PASADA 1b: StandardScaler.partial_fit bloque a bloque"):
-        scaler = pass1b_fit_scaler(INPUT_FILES["train"], roles, imputers)
-        print(f"    Scaler ajustado sobre {scaler.n_samples_seen_:,} filas, "
-              f"{scaler.n_features_in_} features")
-
-    feature_names = roles["num_feature_cols"] + roles["cat_cols"]
+    with timer("Reutilizando preprocesamiento original, sin volver a ajustarlo"):
+        with open(os.path.join(REAL_ARTIFACT_DIR, "dataset_manifest.json"), encoding="utf-8") as f:
+            original_manifest = json.load(f)
+        if (original_manifest["target"] != CLASSIFICATION_TARGET or
+                original_manifest["neutral_change_pct"] != NEUTRAL_CHANGE_PCT):
+            raise ValueError("El target de los holdouts originales no coincide con el actual.")
+        loaded = {}
+        for name in ("scaler", "encoders", "imputers", "feature_names"):
+            with open(os.path.join(REAL_ARTIFACT_DIR, f"{name}.pkl"), "rb") as f:
+                loaded[name] = pickle.load(f)
+        scaler, encoders, imputers, feature_names = (
+            loaded[name] for name in ("scaler", "encoders", "imputers", "feature_names")
+        )
+        missing = set(feature_names) - set(roles["all_cols"])
+        if missing:
+            raise ValueError(f"Faltan columnas originales en train sintetico: {sorted(missing)}")
+        roles["cat_cols"] = [c for c in feature_names if c in encoders]
+        roles["num_feature_cols"] = [c for c in feature_names if c not in encoders]
+        if roles["num_feature_cols"] + roles["cat_cols"] != feature_names:
+            raise ValueError("El orden de features original no es compatible.")
+        if hasattr(scaler, "feature_names_in_") and list(scaler.feature_names_in_) != roles["num_feature_cols"]:
+            raise ValueError("El escalador original no coincide con las features.")
+        for split in ("val", "test"):
+            columns = pq.ParquetFile(INPUT_FILES[split]).schema_arrow.names
+            if [c for c in columns if c not in REGRESSION_TARGETS + [CLASSIFICATION_TARGET]] != feature_names:
+                raise ValueError(f"{split}: esquema incompatible con los artefactos originales.")
 
     with timer("Guardando artefactos (.pkl)"):
         save_artifacts(scaler, encoders, imputers, feature_names)
 
-    with timer("PASADA 2: transform & write streaming (ParquetWriter)"):
-        for split in ["train", "val", "test"]:
-            pass2_transform_write(
-                split, INPUT_FILES[split], OUTPUT_FILES[split],
-                roles, scaler, encoders, imputers,
-            )
+    with timer("Transformando solo train sintetico"):
+        pass2_transform_write(
+            "train", INPUT_FILES["train"], OUTPUT_FILES["train"],
+            roles, scaler, encoders, imputers,
+        )
+
+    with timer("Copiando val y test reales sin reprocesarlos"):
+        for split in ("val", "test"):
+            shutil.copy2(INPUT_FILES[split], OUTPUT_FILES[split])
+            print(f"    {split}: copia exacta de {INPUT_FILES[split]}")
 
     with timer("Verificacion de salida"):
         for split in ["train", "val", "test"]:

@@ -17,10 +17,14 @@ import pandas as pd
 import pyarrow.parquet as pq
 from sklearn.metrics import accuracy_score, f1_score
 from flaml import AutoML
+from catboost_gpu import CatBoostGPUEstimator, CATBOOST_GPU_SEARCH_SPACE
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-from dnn_config import INPUT_FILES, RESULTS_DIR, CLASSIFICATION_TARGET, CAT_COLS
+from dnn_config import (
+    SYNTHETIC_INPUT_FILES, SYNTHETIC_ARTIFACT_DIR, SYNTHETIC_RESULTS_DIR,
+    CLASSIFICATION_TARGET, CAT_COLS,
+)
 from dnn_data import sample_parquet
 
 TRAIN_SAMPLE = None
@@ -32,17 +36,11 @@ HPO_METHOD = "bs"
 METRIC = "macro_f1"
 MARGIN = 0.005
 
-ESTIMATORS = ["lgbm", "xgboost", "lrl2"]
-try:
-    import catboost
-    ESTIMATORS.insert(2, "catboost")
-except Exception:
-    pass
+ESTIMATORS = ["catboost_gpu"]
 
 def load_schema():
     import pickle
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-              "archive", "data", "clean", "artifacts", "feature_names.pkl"), "rb") as f:
+    with open(os.path.join(SYNTHETIC_ARTIFACT_DIR, "feature_names.pkl"), "rb") as f:
         feature_names = pickle.load(f)
     cat_cols = [c for c in CAT_COLS if c in feature_names]
     return feature_names, cat_cols
@@ -57,18 +55,18 @@ def read_split(path, feature_names, cat_cols, sample=None):
     return X, y
 
 def main():
-    # Comparar con la nueva corrida de cinco clases, no con resultados anteriores.
-    with open(os.path.join(RESULTS_DIR, "metrics_automl.json"), encoding="utf-8") as f:
+    # Comparar con la nueva corrida de tres clases, no con resultados anteriores.
+    with open(os.path.join(SYNTHETIC_RESULTS_DIR, "metrics_automl.json"), encoding="utf-8") as f:
         REFERENCE_ACC = float(json.load(f)["val_accuracy"])
     print("=" * 60)
     print("  05b: Robustez del AutoML (variacion entre semillas en validacion)")
     print("=" * 60)
-    os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(SYNTHETIC_RESULTS_DIR, exist_ok=True)
 
     feature_names, cat_cols = load_schema()
     print("\n  Cargando datos (una vez)...")
-    X_train, y_train = read_split(INPUT_FILES["train"], feature_names, cat_cols, sample=TRAIN_SAMPLE)
-    X_val, y_val = read_split(INPUT_FILES["val"], feature_names, cat_cols)
+    X_train, y_train = read_split(SYNTHETIC_INPUT_FILES["train"], feature_names, cat_cols, sample=TRAIN_SAMPLE)
+    X_val, y_val = read_split(SYNTHETIC_INPUT_FILES["val"], feature_names, cat_cols)
     print(f"    train (muestra): {X_train.shape}  val: {X_val.shape}")
 
     classes, counts = np.unique(y_train, return_counts=True)
@@ -85,13 +83,18 @@ def main():
     rows = []
     for seed in SEEDS:
         automl = AutoML()
+        automl.add_learner(
+            learner_name="catboost_gpu",
+            learner_class=CatBoostGPUEstimator,
+        )
         t0 = time.time()
         automl.fit(X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val,
                    sample=False, retrain_full=False, task="classification",
                    metric=METRIC, estimator_list=ESTIMATORS,
                    time_budget=TIME_BUDGET_PER_SEED, hpo_method=HPO_METHOD,
                    early_stop=EARLY_STOP, ensemble=ENSEMBLE,
-                   sample_weight=sw, eval_method="holdout", seed=seed, verbose=0)
+                   sample_weight=sw, eval_method="holdout", seed=seed,
+                   custom_hp=CATBOOST_GPU_SEARCH_SPACE, verbose=0)
         dt = time.time() - t0
         yp = automl.predict(X_val)
         acc = accuracy_score(y_val, yp)
@@ -103,7 +106,7 @@ def main():
         print(f"  seed {seed:>3} | {modelo:<15} | acc {acc:.4f} | macroF1 {f1:.4f} | {dt:.0f}s{marca}")
 
     df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(RESULTS_DIR, "automl_robustez.csv"), index=False)
+    df.to_csv(os.path.join(SYNTHETIC_RESULTS_DIR, "automl_robustez.csv"), index=False)
 
     best = df.loc[df["val_accuracy"].idxmax()]
     print(f"\n  Mejor de todas: seed {int(best['seed'])} ({best['best_estimator']}) "
@@ -112,7 +115,7 @@ def main():
     delta = best["val_accuracy"] - REFERENCE_ACC
     print(f"  Diferencia:                         {delta:+.4f}")
     print("Variacion entre semillas en validacion; no demuestra un techo de desempeno.")
-    print(f"\n  Guardado: results/automl_robustez.csv")
+    print("\n  Guardado: result_sintetico/automl_robustez.csv")
     print("=" * 60)
 
 if __name__ == "__main__":

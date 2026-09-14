@@ -24,9 +24,12 @@ from sklearn.metrics import (
     confusion_matrix, ConfusionMatrixDisplay,
 )
 from flaml import AutoML
+from catboost_gpu import CatBoostGPUEstimator, CATBOOST_GPU_SEARCH_SPACE
 
 from dnn_config import (
-    INPUT_FILES, CLEAN_DIR, ARTIFACT_DIR, RESULTS_DIR,
+    SYNTHETIC_INPUT_FILES as INPUT_FILES,
+    SYNTHETIC_ARTIFACT_DIR as ARTIFACT_DIR,
+    SYNTHETIC_RESULTS_DIR as RESULTS_DIR,
     CLASSIFICATION_TARGET, CAT_COLS,
 )
 from dnn_data import sample_parquet
@@ -34,10 +37,10 @@ from experiment_results import save_metrics
 from target_config import PRICE_DIRECTION_CLASSES, price_direction_display_labels
 
 AUTOML_TRAIN_SAMPLE = None
-TIME_BUDGET = 1800
+TIME_BUDGET = 600
 EARLY_STOP = True
 MAX_ITER = 1_000_000
-ESTIMATORS = ["lgbm", "rf", "extra_tree", "lrl2"]
+ESTIMATORS = ["catboost_gpu"]
 METRIC = "macro_f1"
 RANDOM_STATE = 42
 FLAML_LOG = os.path.join(RESULTS_DIR, "automl_flaml.log")
@@ -67,6 +70,11 @@ def main():
     print("  PASO 3 (2.1): AutoML con FLAML")
     print("=" * 60)
     os.makedirs(RESULTS_DIR, exist_ok=True)
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+    n_train = pq.ParquetFile(INPUT_FILES["train"]).metadata.num_rows
+    if n_train > 3_000_000:
+        raise ValueError("El train aun supera 3 millones. Ejecuta 01 y 02 para regenerarlo.")
+    print("  Train sintetico (hasta 3 millones); validacion y test reales; CatBoost GPU")
 
     feature_names, num_cols, cat_cols = load_schema()
     print(f"  Features: {len(feature_names)} ({len(num_cols)} num + {len(cat_cols)} cat)")
@@ -74,8 +82,7 @@ def main():
     print("\n  Cargando datos...")
     X_train, y_train = read_split(INPUT_FILES["train"], feature_names, cat_cols, sample=AUTOML_TRAIN_SAMPLE)
     X_val, y_val = read_split(INPUT_FILES["val"], feature_names, cat_cols)
-    X_test, y_test = read_split(INPUT_FILES["test"], feature_names, cat_cols)
-    print(f"    train (muestra): {X_train.shape}  test: {X_test.shape}")
+    print(f"    train: {X_train.shape}  val: {X_val.shape}")
 
     classes, counts = np.unique(y_train, return_counts=True)
     freq = dict(zip(classes, counts))
@@ -86,6 +93,7 @@ def main():
     print(f"\n  Buscando (tiempo={budget_txt}, early_stop={EARLY_STOP}, estimadores={ESTIMATORS})...")
     print(f"  Progreso en vivo: {FLAML_LOG}")
     automl = AutoML()
+    automl.add_learner(learner_name="catboost_gpu", learner_class=CatBoostGPUEstimator)
     t0 = time.time()
     automl.fit(
         X_train=X_train, y_train=y_train,
@@ -93,6 +101,8 @@ def main():
         task="classification",
         metric=METRIC,
         estimator_list=ESTIMATORS,
+        custom_hp=CATBOOST_GPU_SEARCH_SPACE,
+        ensemble=False,
         time_budget=TIME_BUDGET,
         max_iter=MAX_ITER,
         early_stop=EARLY_STOP,
@@ -107,6 +117,7 @@ def main():
     print(f"\n  Mejor modelo: {automl.best_estimator}")
     print(f"  Config: {automl.best_config}")
 
+    X_test, y_test = read_split(INPUT_FILES["test"], feature_names, cat_cols)
     inference_start = time.perf_counter()
     y_pred = automl.predict(X_test)
     inference_seconds = time.perf_counter() - inference_start
@@ -129,7 +140,7 @@ def main():
     ax.set_ylabel("Real", fontsize=10)
     ax.tick_params(axis="both", labelsize=9)
     plt.setp(ax.get_xticklabels(), rotation=25, ha="right", rotation_mode="anchor")
-    ax.set_title(f"AutoML ({automl.best_estimator}) - Test (Acc={test_acc:.4f})", fontweight="bold")
+    ax.set_title(f"AutoML CatBoost GPU - Train sintetico\nTest real (Acc={test_acc:.4f})", fontweight="bold")
     fig.tight_layout()
     fig.savefig(os.path.join(RESULTS_DIR, "11_automl_confusion.png"), dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -148,7 +159,9 @@ def main():
         "complejidad_unidad": model_complexity_unit(automl.model.estimator),
         "tiempo_s": float(search_time),
         "search_time_s": float(search_time), "fit_time_s": 0.0,
-        "inference_time_s": inference_seconds, "device": "cpu",
+        "inference_time_s": inference_seconds, "device": "GPU:0 (CatBoost)",
+        "tree_count": int(automl.model.estimator.tree_count_),
+        "leaf_values": int(len(automl.model.estimator.get_leaf_values())),
         "val_accuracy": float(accuracy_score(y_val, automl.predict(X_val))),
         "val_macro_f1": float(f1_score(y_val, automl.predict(X_val), average="macro")),
         "best_estimator": str(automl.best_estimator),
@@ -159,11 +172,13 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"  AutoML listo | {automl.best_estimator} | test acc {test_acc:.4f} | {search_time:.0f}s")
-    print(f"  Guardado: results/metrics_automl.json")
+    print(f"  Guardado: result_sintetico/metrics_automl.json")
     print(f"{'='*60}")
 
 def model_complexity(est):
     try:
+        if hasattr(est, "get_tree_leaf_counts"):
+            return int(np.sum(est.get_tree_leaf_counts()))
         if hasattr(est, "coef_"):
             return int(np.asarray(est.coef_).size + np.asarray(est.intercept_).size)
         if hasattr(est, "booster_"):
@@ -177,6 +192,8 @@ def model_complexity(est):
     return "n/d"
 
 def model_complexity_unit(est):
+    if hasattr(est, "get_tree_leaf_counts"):
+        return "hojas de arbol"
     if hasattr(est, "coef_"):
         return "parametros entrenables"
     if hasattr(est, "booster_"):

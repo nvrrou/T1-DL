@@ -4,17 +4,17 @@ import time
 import json
 
 import duckdb
+import pyarrow.parquet as pq
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "archive", "data")
+DATA_DIR = os.path.join(BASE_DIR, "archive", "data", "sintetico")
 
 SPLIT_FILES = {
-    "train": os.path.join(DATA_DIR, "splits", "ecommerce_train.csv"),
-    "val":   os.path.join(DATA_DIR, "splits", "ecommerce_val.csv"),
-    "test":  os.path.join(DATA_DIR, "splits", "ecommerce_test.csv"),
+    "synthetic": os.path.join(DATA_DIR, "train_real.csv"),
 }
 
 CLEAN_DIR = os.path.join(DATA_DIR, "clean")
+REAL_CLEAN_DIR = os.path.join(BASE_DIR, "archive", "data", "clean")
 
 DROP_COLS = ["product_id", "title", "brand", "asin", "timestamp"]
 
@@ -42,9 +42,16 @@ def timer(msg: str):
 def main():
     print("=" * 60)
     print("  SCRIPT DE LIMPIEZA DE DATOS (DuckDB out-of-core)")
-    print("  Dataset: E-Commerce Price Tracker")
+    print("  Dataset: E-Commerce Price Tracker - DATOS SINTETICOS")
     print("=" * 60)
 
+    # Los holdouts originales son de solo lectura.
+    for split in ("val", "test"):
+        path = os.path.join(REAL_CLEAN_DIR, f"{split}_features.parquet")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(path)
+    with open(os.path.join(REAL_CLEAN_DIR, "split_metadata.json"), encoding="utf-8") as f:
+        real_metadata = json.load(f)
     os.makedirs(CLEAN_DIR, exist_ok=True)
 
     for name, path in SPLIT_FILES.items():
@@ -74,7 +81,7 @@ def main():
                 );
             """)
             total = con.execute("SELECT COUNT(*) FROM raw_data").fetchone()[0]
-            print(f"    Total filas (3 splits): {total:,}")
+            print(f"    Total filas de entrenamiento sintetico: {total:,}")
 
         with timer("Inspeccionando columnas"):
             cols_info = con.execute("DESCRIBE raw_data").fetchall()
@@ -103,47 +110,37 @@ def main():
             print(f"    Filas después de limpieza: {n_clean:,}")
             print(f"    Filas eliminadas (nulos + duplicados): {n_removed:,}")
 
-        with timer("Muestra reproducible y particion temporal 80/10/10"):
-            # Hash solo para seleccionar la muestra; nunca para separar los splits.
+        with timer("Seleccion de train sintetico; val y test reales se conservan"):
             con.execute(f"""
-                CREATE OR REPLACE TABLE selected_data AS
-                SELECT * FROM clean_data
+                CREATE OR REPLACE TABLE partitioned AS
+                SELECT *, 'train' AS _split FROM clean_data
                 ORDER BY hash(_product_id, platform, _observed_at),
                          _product_id, platform, _observed_at
                 LIMIT {DATASET_ROWS};
             """)
-            val_start, test_start = con.execute("""
-                SELECT quantile_disc(_observed_at, 0.8),
-                       quantile_disc(_observed_at, 0.9) FROM selected_data
-            """).fetchone()
-            if val_start is None or val_start >= test_start:
-                raise ValueError("No hay suficientes fechas para los tres splits.")
-            con.execute(f"""
-                CREATE OR REPLACE TABLE partitioned AS
-                SELECT *, CASE
-                    WHEN _observed_at + INTERVAL '{HORIZON_DAYS} days' < ? THEN 'train'
-                    WHEN _observed_at >= ? AND
-                         _observed_at + INTERVAL '{HORIZON_DAYS} days' < ? THEN 'val'
-                    WHEN _observed_at >= ? THEN 'test'
-                    ELSE 'purged' END AS _split
-                FROM selected_data
-            """, [val_start, val_start, test_start, test_start])
-            split_counts = con.execute("""
-                SELECT _split, COUNT(*), MIN(_observed_at), MAX(_observed_at)
-                FROM partitioned GROUP BY _split ORDER BY _split
-            """).fetchall()
-            if not {'train', 'val', 'test'} <= {r[0] for r in split_counts}:
-                raise ValueError("La purga temporal dejo un split vacio.")
-            metadata = {"source_rows": total, "clean_rows": n_clean,
-                        "selected_rows": sum(r[1] for r in split_counts),
-                        "horizon_days": HORIZON_DAYS,
-                        "val_start": str(val_start), "test_start": str(test_start),
-                        "splits": {name: {"rows": n, "start": str(start), "end": str(end)}
-                                   for name, n, start, end in split_counts}}
+            n_train, start, end = con.execute(
+                "SELECT COUNT(*), MIN(_observed_at), MAX(_observed_at) FROM partitioned"
+            ).fetchone()
+            if not n_train:
+                raise ValueError("El entrenamiento sintetico quedo vacio.")
+            metadata = {
+                "mode": "synthetic_train_real_holdouts",
+                "source_files": SPLIT_FILES,
+                "source_rows": total, "clean_rows": n_clean,
+                "selected_rows": n_train,
+                "splits": {"train": {"rows": n_train, "start": str(start),
+                                     "end": str(end), "source": "synthetic"}},
+            }
+            for split in ("val", "test"):
+                path = os.path.join(REAL_CLEAN_DIR, f"{split}_features.parquet")
+                metadata["splits"][split] = {
+                    **real_metadata["splits"][split],
+                    "rows": pq.ParquetFile(path).metadata.num_rows,
+                    "source": "real", "path": path,
+                }
             with open(os.path.join(CLEAN_DIR, "split_metadata.json"), "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
-            for name, n, start, end in split_counts:
-                print(f"    {name}: {n:,} filas | {start} -> {end}")
+            print(f"    Train sintetico: {n_train:,} filas; sin nueva division 80/10/10")
 
         with timer("Exportando a Parquet (float32, categorías en texto)"):
             col_types = con.execute("DESCRIBE clean_data").fetchall()
@@ -162,7 +159,7 @@ def main():
                     cast_exprs.append(f'"{col_name}"')
             select_cast = ", ".join(cast_exprs)
 
-            for split in ["train", "val", "test"]:
+            for split in ["train"]:
                 outpath = os.path.join(CLEAN_DIR, f"{split}.parquet").replace("\\", "/")
                 con.execute(f"""
                     COPY (
@@ -192,8 +189,7 @@ def main():
                 pass
 
     with timer("Verificación de salida"):
-        import pyarrow.parquet as pq
-        for split in ["train", "val", "test"]:
+        for split in ["train"]:
             pf = pq.ParquetFile(os.path.join(CLEAN_DIR, f"{split}.parquet"))
             meta = pf.metadata
             schema = pf.schema_arrow

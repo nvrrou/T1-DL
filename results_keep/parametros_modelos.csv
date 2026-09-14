@@ -1,0 +1,5 @@
+modelo,valores_aprendidos,detalle,unidad,tamano_mb
+Baseline Logistica,117,117 parametros,parametros entrenables,0.0014066696166992188
+DNN manual,57855,"57,855 parametros",parametros entrenables,0.23396682739257812
+AutoML CatBoost,869376,"289,792 hojas x 3 clases",valores de hoja,18.0169038772583
+NAS Optuna,694083,"694,083 parametros",parametros entrenables,2.6810216903686523

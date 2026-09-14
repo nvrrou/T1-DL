@@ -1,0 +1,51 @@
+{
+  "name": "NAS (Optuna)",
+  "family": "DNN con arquitectura optimizada",
+  "test_accuracy": 0.5887951004137986,
+  "test_macro_f1": 0.5432858006151008,
+  "train_accuracy": 0.48532402954061116,
+  "generalizacion_gap": -0.10347107087318741,
+  "complejidad_params": 694083,
+  "complejidad_unidad": "parametros entrenables",
+  "tiempo_s": 678.8357015166694,
+  "search_time_s": 549.2401738166809,
+  "fit_time_s": 129.59552769998845,
+  "inference_time_s": 0.12902670000039507,
+  "val_macro_f1": 0.2988750638571696,
+  "device": "NVIDIA GeForce RTX 3060 Ti",
+  "n_trials": 25,
+  "best_arch": {
+    "hidden": [
+      128,
+      256,
+      512
+    ],
+    "dropout": 0.13567451588694796,
+    "lr": 0.0025585868855934266,
+    "weight_decay": 1.1756010900231857e-05,
+    "batch_size": 2048
+  },
+  "run_id": "8cdc75e1-a40f-4407-8f85-f9013f81f1ba",
+  "classes": [
+    "0_baja",
+    "1_neutro",
+    "2_sube"
+  ],
+  "feature_count": 38,
+  "train_rows": 2369213,
+  "val_rows": 269651,
+  "test_rows": 303046,
+  "majority_test_accuracy": 0.36350917022498236,
+  "uniform_random_accuracy": 0.3333333333333333,
+  "model_size_mb": 2.6810216903686523,
+  "hardware": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.1",
+    "torch": "2.14.0+cu130",
+    "flaml": "2.6.0",
+    "optuna": "5.0.0"
+  }
+}

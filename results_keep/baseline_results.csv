@@ -1,0 +1,5 @@
+Modelo,Accuracy
+SVM RBF,0.45748
+Regresion Logistica,0.456920241349003
+SVM Lineal,0.4568312374142874
+Regresion Lineal,0.21698788433938684

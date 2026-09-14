@@ -11,19 +11,17 @@ El objetivo es multiclase a 7 dias. Se calcula como
 
 | Clase | Cambio porcentual |
 | --- | --- |
-| `0_baja_mucho` | <= -10% |
-| `1_baja_un_poco` | > -10% y < -3% |
-| `2_se_mantiene` | de -3% a +3%, inclusive |
-| `3_sube_un_poco` | > +3% y < +10% |
-| `4_sube_mucho` | >= +10% |
+| `0_baja` | < -3% |
+| `1_neutro` | de -3% a +3%, inclusive |
+| `2_sube` | > +3% |
 
-Los umbrales se configuran en `target_config.py`. `02_feature_engineering.py`
-reemplaza el target original de tres clases con estas cinco etiquetas.
+El umbral se configura en `target_config.py`. `02_feature_engineering.py`
+calcula las etiquetas Baja, Neutro y Sube a partir de los precios.
 Los precios futuros se excluyen de las entradas de todos los modelos.
 Se descartan filas sin precios validos para calcular el cambio.
-DNN y NAS infieren las cinco salidas desde las etiquetas. La regresion lineal
+DNN y NAS infieren las tres salidas desde las etiquetas. La regresion lineal
 conserva su adaptacion original: redondear y limitar la prediccion al indice de
-clase (0 a 4).
+clase (0 a 2).
 
 En PowerShell, desde `F:\T1DL`, instala las dependencias una vez:
 
@@ -33,7 +31,7 @@ En PowerShell, desde `F:\T1DL`, instala las dependencias una vez:
 
 El paso 00 no forma parte de la ejecucion necesaria. Regenera los datos con 01
 y 02 y vuelve a entrenar todos los modelos: los resultados anteriores no
-corresponden a las cinco clases ni al nuevo split temporal.
+corresponden a las tres clases actuales ni al nuevo split temporal.
 
 ```
 .\run_pipeline.ps1               # Ejecuta 01 a 07 y guarda logs
@@ -112,8 +110,8 @@ secundario con una muestra de 50.000 filas por su costo cuadratico.
 MLP tabular en PyTorch. Decisiones de diseno:
 - Categoricas por capas de **embedding** aprendidas (no codigos crudos ni
   one-hot); numericas ya estandarizadas entran directo.
-- Bloques Linear -> BatchNorm -> ReLU -> Dropout; salida de 5 clases.
-- **CrossEntropy ponderada** por frecuencia inversa (pesos calculados con las cinco clases del train).
+- Bloques Linear -> BatchNorm -> ReLU -> Dropout; salida de 3 clases.
+- **CrossEntropy ponderada** por frecuencia inversa (pesos calculados con las tres clases del train).
 - Adam + ReduceLROnPlateau + **early stopping** sobre la perdida de validacion.
 - Entrenamiento por **mini-batches en streaming** desde el Parquet seleccionado.
 - Auto-detecta GPU (CUDA) o CPU.
@@ -123,10 +121,11 @@ Salidas: `results/08_dnn_convergencia.png` (curvas train/val de loss y accuracy)
 `archive/data/clean/artifacts/dnn_model.pt`.
 
 ### Paso 3 (2.1) — AutoML (`05_automl.py`)
-FLAML busca automaticamente una tecnica de ML de baja complejidad (LightGBM,
-Random Forest, Extra Trees, Regresion Logistica), optimizando macro-F1 sobre
-el train comun. Usa exclusivamente validacion durante la busqueda y reserva
-test para la evaluacion final. Guarda métricas, reporte por clase y confusion.
+FLAML optimiza CatBoost en GPU, usando un adaptador que elimina el callback de
+FLAML incompatible con `task_type="GPU"`. Busca cantidad y profundidad de
+arboles, learning rate y regularizacion, optimizando macro-F1 sobre el train
+comun. Usa exclusivamente validacion durante la busqueda y reserva test para
+la evaluacion final. Guarda metricas, reporte por clase y confusion.
 
 ### Paso 3 (2.2) — NAS (`06_nas.py`)
 Optuna optimiza la arquitectura del MLP del paso 2 (capas, unidades, dropout, lr,
